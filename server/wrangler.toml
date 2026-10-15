@@ -17,7 +17,7 @@ EXPORT_TTL_SECONDS = "900"
 # Create with `npx wrangler kv namespace create EXPORTS` and paste the id below.
 [[kv_namespaces]]
 binding = "EXPORTS"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "61740d1626cd48cca0a09e026d2034b7"
 
 # Secrets (set once each, values never committed):
 #   npx wrangler secret put HCSS_CLIENT_ID

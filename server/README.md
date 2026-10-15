@@ -24,8 +24,18 @@ Binding: KV `EXPORTS`.
 ## Tools
 list_business_units, list_estimates, search_estimates, get_estimate, get_bid_items, get_activities, get_resources, get_materials, get_estimate_cost_breakdown, export_estimate (xlsx|csv).
 
+`get_materials` takes `priced_only` (drops unit cost $0). Cost breakdown, materials and export apply HeavyBid's activity Bid/TO factor and sharing split when that matches HeavyBid's direct total; otherwise the tool warns `does not reconcile with HeavyBid` with both amounts.
+
+## Reconcile after deploy
+Read-only. From `server/`, with secrets in the environment (never in a file in this repo):
+```
+HCSS_CLIENT_ID=... HCSS_CLIENT_SECRET=... HCSS_BUSINESS_UNIT_ID=... \
+  npm run reconcile -- <estimate-uuid> [<estimate-uuid> ...]
+```
+Prints each bid item's connector total next to HeavyBid `directTotal`, plus `totalCost`, `markup` and `bidPrice`. Exit code 1 when any checked bid item or activity is off by more than $1, or when `directTotal` is missing.
+
 ## Files
-`src/worker.ts` (routing, IP check, downloads, MCP transport) · `src/tools.ts` · `src/hcss.ts` (token, GET-only, subrequest budget, 429 backoff, paging, isolate cache) · `src/breakdown.ts` (join + CSV) · `src/xlsx.ts` (minimal xlsx via fflate, level 0) · `src/redact.ts` (optional cost switch) · `src/ip.ts` · `src/config.ts` · `scripts/smoke.mjs`
+`src/worker.ts` (routing, IP check, downloads, MCP transport) · `src/tools.ts` · `src/hcss.ts` (token, GET-only, subrequest budget, 429 backoff, paging, isolate cache) · `src/breakdown.ts` (join + CSV) · `src/factor.ts` (Bid/TO factor, sharing split, reconciliation) · `src/xlsx.ts` (minimal xlsx via fflate, level 0) · `src/redact.ts` (optional cost switch) · `src/ip.ts` · `src/config.ts` · `scripts/smoke.mjs` · `scripts/reconcile.mjs`
 
 The Fly.io / Express version (v0.2) has been removed.
 

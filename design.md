@@ -62,7 +62,9 @@ Ryan's HeavyBid runs in a VM and exporting reports is painful, so this tool rebu
 | Supp Desc | resource.supplementalDescription | VERIFIED field |
 | EOE / Burden / Burden% | **not in the resource schema** | **UNVERIFIED**; left blank. Burden and EOE exist at the activity level (`burden`, `equipmentOperatingExpense`) but are not split by resource. Options: compute from typeCost and rates, or ask HCSS (api-team@hcss.com). |
 
-**Validation step:** have Ryan export this report from HeavyBid for one estimate, then compare it row by row with `export_estimate` before we rely on it.
+**Quantity factor and shared activities.** Estimate Insights `resource.total` / `resource.quantity` are the unfactored lines. `resource.factor` and `activity.factor` are the Bid/TO factor (bid quantity ÷ takeoff quantity, sometimes stored as the inverse). A shared activity is either copied onto each bid item at the full quantity, or stored once on an owner bid item. The cost breakdown, the material list and the export apply a factor or a sharing split only when that makes the activity match HeavyBid's own `directTotal` within $1. If nothing matches, the raw line is returned and the tool says it does not reconcile with HeavyBid, with both numbers. `priced_only` on `get_materials` drops lines whose unit cost is $0. Tax/OT%, EOE%, Pcs/Wste, and the blank EOE / Burden dollar columns are unchanged.
+
+**Validation step:** have Ryan export this report from HeavyBid for one estimate, then compare it row by row with `export_estimate` before we rely on it. After deploy, run `npm run reconcile -- <estimate-uuid> ...` in `server/` against 5–10 estimates (Fairways and Save A Lot included).
 
 Volume: the three lists are pulled one after another with `$top=1000` pages. A 3,000-resource estimate takes about 5 HCSS calls. The ceiling is 40,000 rows, bounded by the 45-call budget (§11), and `truncated` or a clear error tells you when it's hit. The chat tool returns at most 500 rows (`limit_rows` up to 2,000, or a `biditem_code` filter). Full estimates should go through export.
 

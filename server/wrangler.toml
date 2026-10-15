@@ -1,0 +1,26 @@
+# Cloudflare Workers FREE plan. Secrets are set with `wrangler secret put`, NEVER in this file.
+name = "schrex-hcss-mcp"
+main = "src/worker.ts"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+# Non-secret settings
+[vars]
+HCSS_SCOPE = "heavybid:read heavybid:system:read"
+HCSS_HIDE_COST_RATES = "false"
+ALLOWED_CIDRS = "160.79.104.0/21"
+HCSS_PAGE_SIZE = "1000"
+HCSS_MAX_SUBREQUESTS = "45"
+EXPORT_TTL_SECONDS = "900"
+
+# KV for short-lived export files (free: 1,000 writes/day, 100,000 reads/day, 25 MiB/value).
+# Create with `npx wrangler kv namespace create EXPORTS` and paste the id below.
+[[kv_namespaces]]
+binding = "EXPORTS"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Secrets (set once each, values never committed):
+#   npx wrangler secret put HCSS_CLIENT_ID
+#   npx wrangler secret put HCSS_CLIENT_SECRET
+#   npx wrangler secret put HCSS_BUSINESS_UNIT_ID
+#   npx wrangler secret put MCP_PATH_SECRET

@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.factor.json && node --test test/factor.test.mjs",
+    "reconcile": "tsc -p tsconfig.factor.json && node scripts/reconcile.mjs",
     "build": "wrangler deploy --dry-run --outdir dist",
     "smoke": "npm run build && node scripts/smoke.mjs",
     "dev": "wrangler dev",

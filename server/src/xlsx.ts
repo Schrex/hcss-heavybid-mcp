@@ -21,9 +21,13 @@ function sheet(rows: unknown[][], freezeHeader: boolean): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${views}<sheetData>${body}</sheetData>${filter}</worksheet>`;
 }
 
-export function toXlsx(rows: Record<string, unknown>[], title: string): Uint8Array {
+export function toXlsx(rows: Record<string, unknown>[], title: string, warnings: string[] = []): Uint8Array {
   const main = [COLUMNS.map((c) => c.header), ...rows.map((r) => COLUMNS.map((c) => r[c.key]))];
-  const notes = [["Estimate", title], ["Generated", new Date().toISOString()], [], ["Column", "HCSS source"], ...COLUMNS.map((c) => [c.header, c.source])];
+  const shown = warnings.slice(0, 50);
+  const extra = shown.length
+    ? [[], ["Reconciliation"], ...shown.map((w) => [w]), ...(warnings.length > shown.length ? [[`and ${warnings.length - shown.length} more do not reconcile with HeavyBid.`]] : [])]
+    : [];
+  const notes = [["Estimate", title], ["Generated", new Date().toISOString()], [], ["Column", "HCSS source"], ...COLUMNS.map((c) => [c.header, c.source]), ...extra];
   const ns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
   const files: Record<string, Uint8Array> = {
     "[Content_Types].xml": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`),

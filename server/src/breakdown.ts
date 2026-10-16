@@ -1,4 +1,5 @@
 import type { HcssClient } from "./hcss.js";
+import { adjustedLines, capWarnings, type Line, type Reconciliation } from "./factor.js";
 
 type Rec = Record<string, any>; // eslint-disable-line
 
@@ -10,12 +11,12 @@ export const COLUMNS: { header: string; key: string; source: string; verified: b
   { header: "Actv Desc", key: "actvDesc", source: "activity.description", verified: true },
   { header: "Resource", key: "resource", source: "resource.resourceCode", verified: true },
   { header: "Description", key: "description", source: "resource.description", verified: true },
-  { header: "Quantity", key: "quantity", source: "resource.quantity", verified: true },
+  { header: "Quantity", key: "quantity", source: "resource.quantity × HeavyBid Bid/TO factor (and a sharing split only when that matches the activity direct total)", verified: true },
   { header: "Unit", key: "unit", source: "resource.units", verified: true },
   { header: "Unit Cost", key: "unitCost", source: "resource.unitPrice", verified: true },
   { header: "Tax/OT%", key: "taxOtPct", source: "resource.percent (UNVERIFIED meaning)", verified: false },
   { header: "Pcs/Wste", key: "pcsWste", source: "resource.pieces (UNVERIFIED for waste)", verified: false },
-  { header: "Total", key: "total", source: "resource.total", verified: true },
+  { header: "Total", key: "total", source: "resource.total × the same factor / sharing split", verified: true },
   { header: "Rent%", key: "rentPct", source: "resource.rentPercent", verified: true },
   { header: "EOE%", key: "eoePct", source: "resource.operatingPercent (UNVERIFIED mapping)", verified: false },
   { header: "Supp Desc", key: "suppDesc", source: "resource.supplementalDescription", verified: true },
@@ -26,6 +27,12 @@ export const COLUMNS: { header: string; key: string; source: string; verified: b
 
 const COST_KEYS = ["unitCost", "total", "eoe", "burden"];
 
+function reportRow(line: Line): Rec {
+  const row: Rec = {};
+  for (const c of COLUMNS) row[c.key] = (line as Rec)[c.key] ?? null;
+  return row;
+}
+
 export async function costBreakdown(hcss: HcssClient, bu: string, estimateId: string, cap: number, hideCost: boolean) {
   const f = { $filter: `estimateId eq ${estimateId}` };
   const base = `/businessunits/${bu}`;
@@ -33,41 +40,18 @@ export async function costBreakdown(hcss: HcssClient, bu: string, estimateId: st
   const bi = await hcss.getAll<Rec>(`${base}/biditems`, f, cap);
   const ac = await hcss.getAll<Rec>(`${base}/activities`, f, cap);
   const rs = await hcss.getAll<Rec>(`${base}/resources`, f, cap);
-  const biById = new Map(bi.records.map((b) => [b.id, b]));
-  const acById = new Map(ac.records.map((a) => [a.id, a]));
-
-  const rows = rs.records.map((r) => {
-    const a = acById.get(r.activityId) ?? {};
-    const b = biById.get(r.biditemId ?? a.biditemId) ?? {};
-    const row: Rec = {
-      biditem: b.biditemCode ?? r.biditemCode ?? null,
-      bidDesc: b.description ?? null,
-      activity: a.activityCode ?? r.activityCode ?? null,
-      actvDesc: a.description ?? null,
-      resource: r.resourceCode ?? null,
-      description: r.description ?? null,
-      quantity: r.quantity ?? null,
-      unit: r.units ?? null,
-      unitCost: r.unitPrice ?? null,
-      taxOtPct: r.percent ?? null,
-      pcsWste: r.pieces ?? null,
-      total: r.total ?? null,
-      rentPct: r.rentPercent ?? null,
-      eoePct: r.operatingPercent ?? null,
-      suppDesc: r.supplementalDescription ?? null,
-      eoe: null,
-      burden: null,
-      burdenPct: null,
-      _sort: [b.sortCode ?? b.biditemCode ?? "", a.activityCode ?? "", r.resourceCode ?? ""].join("\u0000"),
-    };
-    if (hideCost) for (const k of COST_KEYS) row[k] = "[hidden]";
-    return row;
-  });
-  rows.sort((x, y) => (x._sort < y._sort ? -1 : x._sort > y._sort ? 1 : 0));
-  for (const r of rows) delete r._sort;
+  const truncated = bi.truncated || ac.truncated || rs.truncated;
+  const adj = adjustedLines(bi.records, ac.records, rs.records);
+  const rows = adj.lines.map(reportRow);
+  if (hideCost) for (const row of rows) for (const k of COST_KEYS) row[k] = "[hidden]";
+  let reconciliation: Reconciliation = adj.reconciliation;
+  if (hideCost) reconciliation = { ...reconciliation, note: "Costs are hidden; reconciliation amounts were not returned." };
+  else if (truncated) reconciliation = { ...reconciliation, note: [reconciliation.note, "Lists were truncated at the row cap; this check may be incomplete."].filter(Boolean).join(" ") };
   return {
     rows,
-    truncated: bi.truncated || ac.truncated || rs.truncated,
+    warnings: hideCost ? [] : capWarnings(adj.warnings),
+    reconciliation,
+    truncated,
     counts: { biditems: bi.records.length, activities: ac.records.length, resources: rs.records.length },
   };
 }

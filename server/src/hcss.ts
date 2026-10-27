@@ -99,7 +99,11 @@ export class HcssClient {
       }
       if ((res.headers.get("Content-Type") ?? "").includes("text/html")) await readJson(res, `GET ${url.pathname}`);
       if (res.status === 403) throw new Error("HCSS 403 Forbidden: the API client lacks a scope for this call.");
-      if (!res.ok) throw new Error(`HCSS GET ${url.pathname} failed: HTTP ${res.status}`);
+      if (!res.ok) {
+        // Pass HCSS's own explanation through (e.g. malformed $filter), truncated. Bodies never contain our secrets.
+        const body = (await res.text().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, 500);
+        throw new Error(`HCSS GET ${url.pathname} failed: HTTP ${res.status}${body ? ` - ${body}` : ""}`);
+      }
       const value = await readJson<T>(res, `GET ${url.pathname}`);
       getCache.set(key, { at: Date.now(), value });
       if (getCache.size > 50) getCache.delete(getCache.keys().next().value as string); // stay well under 128 MB
@@ -109,9 +113,9 @@ export class HcssClient {
   }
 
   /** Follows nextSkipValue. Uses large $top pages to fit the free-plan subrequest budget. */
-  async getAll<T>(path: string, query: Query, maxRecords: number) {
+  async getAll<T>(path: string, query: Query, maxRecords: number, startSkip = 0) {
     const out: T[] = [];
-    let skip = 0;
+    let skip = startSkip;
     let truncated = false;
     for (;;) {
       const top = Math.min(this.cfg.pageSize, maxRecords - out.length);
@@ -123,6 +127,12 @@ export class HcssClient {
       if (out.length >= maxRecords) { truncated = true; break; }
       skip = next;
     }
-    return { records: out, truncated };
+    return { records: out, truncated, nextSkip: truncated ? startSkip + out.length : undefined };
   }
 }
+
+/** Trim + natural compare for HeavyBid codes, which are left-padded with spaces ("      2010"). */
+export const normCode = (v: unknown) => String(v ?? "").trim();
+const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+export const codeCompare = (a: unknown, b: unknown) => collator.compare(normCode(a), normCode(b));
+export const codeEq = (a: unknown, b: unknown) => normCode(a).toLowerCase() === normCode(b).toLowerCase();

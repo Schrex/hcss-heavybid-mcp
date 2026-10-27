@@ -12,12 +12,25 @@ const data = {
   activities: [{ id: A, estimateId: E, biditemId: B, activityCode: "10.1", description: "Lay pipe" }],
   resources,
 };
-let hcssCalls = 0;
+let hcssCalls = 0, badUa = 0, basicTokenCalls = 0, bodyTokenCalls = 0;
+const BLOCKED = "44444444-4444-4444-8444-444444444444";
 const mock = http.createServer((req, res) => {
   hcssCalls++;
+  if (req.headers["user-agent"] !== "Mozilla/5.0 SchreiberMCP/0.1" || req.headers["accept"] !== "application/json") badUa++;
   res.setHeader("Content-Type", "application/json");
   const u = new URL(req.url, "http://x");
-  if (u.pathname.startsWith("/token")) return res.end(JSON.stringify({ access_token: "fake", token_type: "bearer", expires_in: 3600 }));
+  if (u.pathname.startsWith("/token")) {
+    // Simulate an identity server that only accepts HTTP Basic client auth.
+    const auth = req.headers["authorization"] ?? "";
+    if (!auth.startsWith("Basic ")) { bodyTokenCalls++; res.statusCode = 400; return res.end(JSON.stringify({ error: "invalid_client" })); }
+    basicTokenCalls++;
+    if (Buffer.from(auth.slice(6), "base64").toString() !== "placeholder:placeholder") { res.statusCode = 401; return res.end("{}"); }
+    return res.end(JSON.stringify({ access_token: "fake", token_type: "bearer", expires_in: 3600 }));
+  }
+  if (u.pathname.endsWith(`/estimates/${BLOCKED}`)) {
+    res.statusCode = 403; res.setHeader("Content-Type", "text/html");
+    return res.end("<html><body><h1>The request is blocked.</h1></body></html>");
+  }
   const k = Object.keys(data).find((k) => u.pathname.endsWith(`/${k}`));
   if (k) {
     const top = Number(u.searchParams.get("$top") ?? 100), skip = Number(u.searchParams.get("$skip") ?? 0);
@@ -61,5 +74,10 @@ try {
   ok(ctext.split("\r\n").length === 1501 && ctext.includes('"Storm pipe 12"" & fittings"'), "csv export 1500 rows, quoting ok");
   ok((await fetch(`http://127.0.0.1:9912/wrong/mcp`, { method: "POST" })).status === 404, "wrong secret path -> 404");
   ok((await fetch(`${base}/mcp`)).status === 405, "GET /mcp -> 405");
+  const blk = await rpc(6, "tools/call", { name: "get_estimate", arguments: { estimate_id: BLOCKED } });
+  const blkText = JSON.stringify(blk);
+  ok(blkText.includes("HCSS firewall blocked request"), "HTML firewall page -> 'HCSS firewall blocked request' error");
+  ok(badUa === 0, "every HCSS call sent User-Agent: Mozilla/5.0 SchreiberMCP/0.1 + Accept: application/json");
+  ok(bodyTokenCalls === 1 && basicTokenCalls === 1, "token: 400 invalid_client -> one HTTP Basic fallback");
   console.log(`fake HCSS received ${hcssCalls} calls`);
 } finally { dev.kill("SIGINT"); mock.close(); rmSync(".dev.vars", { force: true }); setTimeout(() => process.exit(), 500); }

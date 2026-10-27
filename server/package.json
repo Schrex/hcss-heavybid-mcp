@@ -1,6 +1,6 @@
 {
   "name": "schrex-hcss-heavybid",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Remote (Streamable HTTP) read-only MCP connector for HCSS HeavyBid on Cloudflare Workers (free plan), Schreiber Excavating",
   "type": "module",

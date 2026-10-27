@@ -1,4 +1,4 @@
-# schrex-hcss-heavybid: remote MCP connector on Cloudflare Workers (v0.3, Free plan)
+# schrex-hcss-heavybid: remote MCP connector on Cloudflare Workers (v0.5, Free plan)
 
 Read-only HCSS HeavyBid (Estimate Insights v2) MCP server. It is a plain Workers `fetch` handler using the MCP SDK's `WebStandardStreamableHTTPServerTransport` (stateless Streamable HTTP, JSON responses). Design: `../design.md`. Setup: `../setup-guide.md`.
 
@@ -24,7 +24,7 @@ Binding: KV `EXPORTS`.
 ## Tools
 list_business_units, list_estimates, search_estimates, get_estimate, get_bid_items, get_activities, get_resources, get_materials, get_estimate_cost_breakdown, export_estimate (xlsx|csv).
 
-`get_materials` takes `priced_only` (drops unit cost $0). Cost breakdown, materials and export apply HeavyBid's activity Bid/TO factor and sharing split when that matches HeavyBid's direct total; otherwise the tool warns `does not reconcile with HeavyBid` with both amounts.
+`get_materials` takes `priced_only` (drops unit cost $0). Cost breakdown, materials and export apply HeavyBid's activity Bid/TO factor and sharing split when that matches HeavyBid's direct total; otherwise the tool warns `does not reconcile with HeavyBid` with both amounts. Estimates and bid items default to a compact page (`detail: true` for the full record, `skip` / `next_skip` to page). Material totals use `scope: full_estimate` and are not shrunk by that page. `tax_percent`, `overtime_factor_percent` and `percent_adjustment` are `resource.percent - 100`.
 
 ## Reconcile after deploy
 Read-only. From `server/`, with secrets in the environment (never in a file in this repo):

@@ -1,4 +1,6 @@
-# HCSS HeavyBid connector for Claude Team: design (v0.3, Cloudflare Workers free plan, revised 2026-10-15)
+# HCSS HeavyBid connector for Claude Team: design (v0.5, Cloudflare Workers free plan, revised 2026-10-27)
+
+**v0.5 change:** Deployed v0.4 behavior (trimmed codes and natural sort, compact estimates and bid items, `skip` / `next_skip` paging, business-unit auto-pick, HCSS 4xx bodies, and `tax_percent` / `overtime_factor_percent` / `percent_adjustment`) is merged with the quantity-factor rollup. Quantity and Total still use that rollup. Tax/OT% is `resource.percent - 100`. EOE and Burden come from `resource.subTypeCost` and are scaled by the same factor as Total.
 
 **v0.3 change:** Sumanth chose **Cloudflare Workers (Free plan)** for hosting. The Node/Express/Fly version was removed (Dockerfile, fly.toml and the Express server are deleted). The server is now a plain Workers `fetch` handler that uses the MCP SDK's `WebStandardStreamableHTTPServerTransport` (stateless, JSON responses). It has no Durable Objects and no `McpAgent`, because those aren't needed for a stateless, authless server and this keeps us inside the free plan. Exports are stored in Workers KV. See §11 for the free-plan limits and how the design fits them.
 
@@ -52,17 +54,19 @@ Ryan's HeavyBid runs in a VM and exporting reports is painful, so this tool rebu
 | Biditem / Bid Desc | biditem.biditemCode / description | VERIFIED field |
 | Activity / Actv Desc | activity.activityCode / description | VERIFIED field |
 | Resource / Description | resource.resourceCode / description | VERIFIED field |
-| Quantity / Unit | resource.quantity / units | VERIFIED field |
+| Quantity / Unit | resource.quantity × Bid/TO factor (and a sharing split only when that matches the activity direct total) / units | VERIFIED field; the factor is applied only when the activity then matches `directTotal` within $1 |
 | Unit Cost | resource.unitPrice | VERIFIED field; meaning matches the report (check against one report) |
-| Tax/OT% | resource.percent | **UNVERIFIED** mapping |
-| Pcs/Wste | resource.pieces | **UNVERIFIED** (waste may be a separate value not in the API) |
-| Total | resource.total | VERIFIED field |
+| Tax/OT% | resource.percent − 100 (108 = 8% tax on materials, 110 = 10% overtime on labor). Blank when 0/null | **UNVERIFIED** mapping |
+| Pcs/Wste | resource.pieces | **UNVERIFIED** (may be pieces, not waste) |
+| Total | resource.total × the same factor / sharing split, rounded to the cent per line | VERIFIED field; the factor is the same one as Quantity |
 | Rent% | resource.rentPercent | VERIFIED field |
 | EOE% | resource.operatingPercent | **UNVERIFIED** mapping |
 | Supp Desc | resource.supplementalDescription | VERIFIED field |
-| EOE / Burden / Burden% | **not in the resource schema** | **UNVERIFIED**; left blank. Burden and EOE exist at the activity level (`burden`, `equipmentOperatingExpense`) but are not split by resource. Options: compute from typeCost and rates, or ask HCSS (api-team@hcss.com). |
+| EOE | resource.subTypeCost when typeCost is E, times the same factor as Total. Otherwise "not available from HeavyBid API" | **UNVERIFIED** against a HeavyBid report. HCSS docs describe subTypeCost this way |
+| Burden | resource.subTypeCost when typeCost is L, times the same factor as Total. Burden is already inside the labor line Total. Otherwise "not available from HeavyBid API" | **UNVERIFIED** against a HeavyBid report |
+| Burden% | not available from the HeavyBid API | left as that sentence |
 
-**Quantity factor and shared activities.** Estimate Insights `resource.total` / `resource.quantity` are the unfactored lines. `resource.factor` and `activity.factor` are the Bid/TO factor (bid quantity ÷ takeoff quantity, sometimes stored as the inverse). A shared activity is either copied onto each bid item at the full quantity, or stored once on an owner bid item. The cost breakdown, the material list and the export apply a factor or a sharing split only when that makes the activity match HeavyBid's own `directTotal` within $1. If nothing matches, the raw line is returned and the tool says it does not reconcile with HeavyBid, with both numbers. `priced_only` on `get_materials` drops lines whose unit cost is $0. Tax/OT%, EOE%, Pcs/Wste, and the blank EOE / Burden dollar columns are unchanged.
+**Quantity factor and shared activities.** Estimate Insights `resource.total` / `resource.quantity` are the unfactored lines. `resource.factor` and `activity.factor` are the Bid/TO factor (bid quantity ÷ takeoff quantity, sometimes stored as the inverse). A shared activity is either copied onto each bid item at the full quantity, or stored once on an owner bid item. The cost breakdown, the material list and the export apply a factor or a sharing split only when that makes the activity match HeavyBid's own `directTotal` within $1. If nothing matches, the raw line is returned and the tool says it does not reconcile with HeavyBid, with both numbers. `priced_only` on `get_materials` drops lines whose unit cost is $0. Material `total` is the sum of those factored resource totals (not `quantity × unitPrice`, and not the materials-endpoint total, which can include sales tax). `tax_percent` is `resource.percent - 100`, and `tax_amount` is that percent times the factored total. EOE and Burden dollars use `subTypeCost` and the same factor; Tax/OT%, EOE% and Pcs/Wste stay best-guess mappings.
 
 **Validation step:** have Ryan export this report from HeavyBid for one estimate, then compare it row by row with `export_estimate` before we rely on it. After deploy, run `npm run reconcile -- <estimate-uuid> ...` in `server/` against 5–10 estimates (Fairways and Save A Lot included).
 

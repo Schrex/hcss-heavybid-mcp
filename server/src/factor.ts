@@ -29,6 +29,12 @@ export interface Line {
   burden: null;
   burdenPct: null;
   _sort: string;
+  /** Bid-item sort code. Ordering only; not part of the rollup. */
+  sortCode: unknown;
+  /** Raw resource.subTypeCost. The report scales it by appliedFactor; the rollup does not read it. */
+  subTypeCost: number | null;
+  /** Bid/TO multiplier times sharing share already applied to quantity and total. */
+  appliedFactor: number;
   activityId: string | null;
   biditemId: string | null;
   typeCost: string | null;
@@ -277,6 +283,11 @@ function buildLine(resource: Rec, source: Rec, target: Rec, bid: Rec, mode: Mode
     burden: null,
     burdenPct: null,
     _sort: [bid.sortCode ?? bidCode ?? "", actCode ?? "", resource.resourceCode ?? ""].join("\u0000"),
+    sortCode: bid.sortCode ?? bidCode ?? null,
+    subTypeCost: resource.subTypeCost === null || resource.subTypeCost === undefined || resource.subTypeCost === ""
+      ? null
+      : num(resource.subTypeCost),
+    appliedFactor: mult,
     activityId: target.id ?? null,
     biditemId: (target.biditemId ?? bid.id ?? resource.biditemId ?? null) as string | null,
     typeCost: resource.typeCost == null || resource.typeCost === "" ? null : String(resource.typeCost),

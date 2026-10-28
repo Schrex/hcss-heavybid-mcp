@@ -1,4 +1,4 @@
-# schrex-hcss-heavybid: remote MCP connector on Cloudflare Workers (v0.5, Free plan)
+# schrex-hcss-heavybid: remote MCP connector on Cloudflare Workers (v0.6, Free plan)
 
 Read-only HCSS HeavyBid (Estimate Insights v2) MCP server. It is a plain Workers `fetch` handler using the MCP SDK's `WebStandardStreamableHTTPServerTransport` (stateless Streamable HTTP, JSON responses). Design: `../design.md`. Setup: `../setup-guide.md`.
 
@@ -8,18 +8,19 @@ npm install
 npm run typecheck
 npm run build      # wrangler deploy --dry-run --outdir dist
 npm run smoke      # builds, runs the Worker under `wrangler dev` against a fake HCSS (placeholder creds)
-npm run deploy     # after `wrangler kv namespace create EXPORTS` + `wrangler secret put ...`
+npm run deploy     # after the KV namespaces + `wrangler secret put ...` (see ../setup-guide.md)
 ```
 
 ## Routes
-- `POST /<MCP_PATH_SECRET>/mcp`: MCP. Only allowed from `ALLOWED_CIDRS` (Anthropic `160.79.104.0/21`, checked via `CF-Connecting-IP`)
-- `GET /<MCP_PATH_SECRET>/exports/<id>`: single-use xlsx/csv download from KV (15 min TTL)
+- `POST /mcp`: MCP. Needs an OAuth access token (`@cloudflare/workers-oauth-provider`), the token's email still on `ALLOWED_USER_EMAIL` and `TOKEN_EPOCH` unchanged. Only allowed from `ALLOWED_CIDRS` (Anthropic `160.79.104.0/21`, checked via `CF-Connecting-IP`)
+- `/register`, `/authorize` (email + shared password sign-in page), `/token`, `/.well-known/*`: OAuth (DCR). Access tokens 1 h, refresh 90 days.
+- `GET /exports/<id>`: single-use xlsx/csv download from KV (15 min TTL)
 - `GET /healthz`
 
 ## Config
-Secrets (`wrangler secret put` only): `HCSS_CLIENT_ID`, `HCSS_CLIENT_SECRET`, `HCSS_BUSINESS_UNIT_ID`, `MCP_PATH_SECRET` (32+ chars).
-Vars (`wrangler.toml`): `HCSS_SCOPE` (`heavybid:read heavybid:system:read`), `HCSS_HIDE_COST_RATES` (`false`), `ALLOWED_CIDRS`, `HCSS_PAGE_SIZE` (1000), `HCSS_MAX_SUBREQUESTS` (45, max 48), `EXPORT_TTL_SECONDS` (900), plus optional `HCSS_TOKEN_URL` / `HCSS_API_BASE` (sandbox).
-Binding: KV `EXPORTS`.
+Secrets (`wrangler secret put` only): `HCSS_CLIENT_ID`, `HCSS_CLIENT_SECRET`, `HCSS_BUSINESS_UNIT_ID`, `ALLOWED_USER_EMAIL` (comma-separated), `ACCESS_PASSWORD_HASH` (`scripts/set-password.sh`), `TOKEN_EPOCH` (rotate to sign everyone out).
+Vars (`wrangler.toml`): `HCSS_SCOPE` (`heavybid:read heavybid:system:read`), `HCSS_HIDE_COST_RATES` (`false`), `ALLOWED_CIDRS`, `HCSS_PAGE_SIZE` (1000), `HCSS_MAX_SUBREQUESTS` (45, max 48), `EXPORT_TTL_SECONDS` (900), `PUBLIC_ORIGIN` (canonical OAuth resource origin), plus optional `HCSS_TOKEN_URL` / `HCSS_API_BASE` (sandbox).
+Bindings: KV `EXPORTS`, KV `OAUTH_KV` (namespace `HEAVYBID_OAUTH_KV`: OAuth clients/grants/tokens + login throttle).
 
 ## Tools
 list_business_units, list_estimates, search_estimates, get_estimate, get_bid_items, get_activities, get_resources, get_materials, get_estimate_cost_breakdown, export_estimate (xlsx|csv).

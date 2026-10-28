@@ -2,7 +2,9 @@ export interface Env {
   // secrets (wrangler secret put)
   HCSS_CLIENT_ID: string;
   HCSS_CLIENT_SECRET: string;
-  MCP_PATH_SECRET: string;
+  ALLOWED_USER_EMAIL: string;        // comma-separated allowlist
+  ACCESS_PASSWORD_HASH: string;      // pbkdf2$<iter>$<salt_b64>$<hash_b64>
+  TOKEN_EPOCH: string;               // rotate to revoke every issued token
   HCSS_BUSINESS_UNIT_ID?: string;
   // vars (wrangler.toml)
   HCSS_SCOPE?: string;
@@ -13,7 +15,10 @@ export interface Env {
   HCSS_PAGE_SIZE?: string;
   HCSS_MAX_SUBREQUESTS?: string;
   EXPORT_TTL_SECONDS?: string;
+  PUBLIC_ORIGIN?: string;            // e.g. https://schrex-hcss-mcp.schrex.workers.dev
   EXPORTS: KVNamespace;
+  OAUTH_KV: KVNamespace;             // required by @cloudflare/workers-oauth-provider; also holds login throttle counters
+  OAUTH_PROVIDER: import("@cloudflare/workers-oauth-provider").OAuthHelpers; // injected by the library
 }
 
 export interface Config {
@@ -26,7 +31,6 @@ export interface Config {
   hideCostRates: boolean;
   pageSize: number;
   maxSubrequests: number;
-  pathSecret: string;
   allowedCidrs: string[];
   exportTtlSeconds: number;
 }
@@ -37,7 +41,6 @@ const num = (v: string | undefined, d: number) => (v && Number.isFinite(Number(v
 
 export function loadConfig(env: Env): Config {
   if (!env.HCSS_CLIENT_ID || !env.HCSS_CLIENT_SECRET) throw new Error("HCSS_CLIENT_ID / HCSS_CLIENT_SECRET secrets are not set.");
-  if (!env.MCP_PATH_SECRET || env.MCP_PATH_SECRET.length < 32) throw new Error("MCP_PATH_SECRET secret must be 32+ characters.");
   return {
     clientId: env.HCSS_CLIENT_ID,
     clientSecret: env.HCSS_CLIENT_SECRET,
@@ -49,8 +52,10 @@ export function loadConfig(env: Env): Config {
     // Free plan: 50 subrequests per invocation, so use big pages ($top) and a hard budget.
     pageSize: Math.min(5000, num(env.HCSS_PAGE_SIZE, 1000)),
     maxSubrequests: Math.min(48, num(env.HCSS_MAX_SUBREQUESTS, 45)),
-    pathSecret: env.MCP_PATH_SECRET,
     allowedCidrs: (env.ALLOWED_CIDRS ?? "160.79.104.0/21").split(",").map((s) => s.trim()).filter(Boolean),
     exportTtlSeconds: Math.max(60, num(env.EXPORT_TTL_SECONDS, 900)), // KV minimum TTL is 60 s
   };
 }
+
+export const allowedEmails = (env: Env) =>
+  (env.ALLOWED_USER_EMAIL ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);

@@ -491,7 +491,7 @@ export function buildServer(cfg: Config, hcss: HcssClient, env: Env, origin: str
       const id = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
       // KV free plan: 1,000 writes/day. One write per export; TTL auto-deletes it.
       await env.EXPORTS.put(`export:${id}`, buf, { expirationTtl: cfg.exportTtlSeconds, metadata: { name, mime } });
-      const url = `${origin}/${cfg.pathSecret}/exports/${id}`;
+      const url = `${origin}/exports/${id}`;
       return reply({
         file: name, rows: b.rows.length, truncated: b.truncated, cost_rates_hidden: cfg.hideCostRates,
         warnings: b.warnings, reconciliation: b.reconciliation,

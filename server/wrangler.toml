@@ -2,16 +2,19 @@
 name = "schrex-hcss-mcp"
 main = "src/worker.ts"
 compatibility_date = "2026-10-01"
+# Lets the OAuth library accept Client ID Metadata Document clients (it logs a notice without it). DCR works either way.
+compatibility_flags = ["global_fetch_strictly_public"]
 workers_dev = true
 
 # Non-secret settings
 [vars]
 HCSS_SCOPE = "heavybid:read heavybid:system:read"
 HCSS_HIDE_COST_RATES = "false"
-ALLOWED_CIDRS = "160.79.104.0/21"
+ALLOWED_CIDRS = "160.79.104.0/21"     # applied to /mcp only (Anthropic egress)
 HCSS_PAGE_SIZE = "1000"
 HCSS_MAX_SUBREQUESTS = "45"
 EXPORT_TTL_SECONDS = "900"
+PUBLIC_ORIGIN = "https://schrex-hcss-mcp.schrex.workers.dev"   # canonical OAuth resource = PUBLIC_ORIGIN + /mcp
 
 # KV for short-lived export files (free: 1,000 writes/day, 100,000 reads/day, 25 MiB/value).
 # Create with `npx wrangler kv namespace create EXPORTS` and paste the id below.
@@ -19,8 +22,14 @@ EXPORT_TTL_SECONDS = "900"
 binding = "EXPORTS"
 id = "61740d1626cd48cca0a09e026d2034b7"
 
+[[kv_namespaces]]
+binding = "OAUTH_KV"   # OAuth clients, grants, hashed tokens (@cloudflare/workers-oauth-provider) + login throttle counters
+id = "caf7cedc68a14905af63133e88f122e0"   # HEAVYBID_OAUTH_KV
+
 # Secrets (set once each, values never committed):
 #   npx wrangler secret put HCSS_CLIENT_ID
 #   npx wrangler secret put HCSS_CLIENT_SECRET
 #   npx wrangler secret put HCSS_BUSINESS_UNIT_ID
-#   npx wrangler secret put MCP_PATH_SECRET
+#   ALLOWED_USER_EMAIL     comma-separated, e.g. ryan@schrex.com
+#   ACCESS_PASSWORD_HASH   pbkdf2$30000$<salt>$<hash>  (scripts/set-password.sh)
+#   TOKEN_EPOCH            any string; change it to revoke every token

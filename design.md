@@ -15,7 +15,7 @@
 Claude Team members (claude.ai / Desktop / mobile)
         |  Anthropic cloud calls the connector (egress 160.79.104.0/21)
         v
-https://schrex-hcss-mcp.<account>.workers.dev/<MCP_PATH_SECRET>/mcp
+https://schrex-hcss-mcp.schrex.workers.dev/mcp   (OAuth: email allowlist + shared password, since v0.6)
         |  Cloudflare Worker (free plan), stateless Streamable HTTP, one invocation per MCP POST
         |  secrets via `wrangler secret put`; KV namespace EXPORTS for 15-min export files
         v
@@ -74,7 +74,7 @@ Volume: the three lists are pulled one after another with `$top=1000` pages. A 3
 
 ## 5. Export (xlsx or CSV)
 - The Worker builds the file in memory. **XLSX** is a minimal hand-written workbook (a "Cost Breakdown" sheet with frozen header and autofilter, plus a "Notes" sheet giving each column's HCSS source), zipped with `fflate` at **compression level 0** to save CPU. **CSV** is UTF-8 with a BOM. `exceljs` was dropped because it is too heavy for 10 ms of CPU. The smoke test's 1,500-row xlsx opens in openpyxl.
-- It is stored in **Workers KV** under a random 256-bit key, with `expirationTtl` = `EXPORT_TTL_SECONDS` (900; KV's minimum is 60). The tool returns `https://<worker>/<MCP_PATH_SECRET>/exports/<id>`. The download deletes the key, so the link works once.
+- It is stored in **Workers KV** under a random 256-bit key, with `expirationTtl` = `EXPORT_TTL_SECONDS` (900; KV's minimum is 60). The tool returns `https://<worker>/exports/<id>` (the 256-bit id is the capability). The download deletes the key, so the link works once.
 - KV free limits (VERIFIED, developers.cloudflare.com/kv/platform/limits): 1,000 writes/day (deletes count against a similar 1,000/day), 100,000 reads/day, 1 GB storage, 25 MiB per value. Each export uses 1 write and 1 delete, so roughly **500 exports/day**, far above what we need. The Worker refuses files over 24 MiB.
 - KV is eventually consistent, so for up to about 60 s a deleted link might still work from another Cloudflare location (UNVERIFIED in practice). The TTL still applies.
 - The user's browser fetches the link, not Anthropic, so the IP allowlist doesn't apply to downloads.
@@ -82,6 +82,8 @@ Volume: the three lists are pulled one after another with `$top=1000` pages. A 3
 - R2 isn't needed. Its free tier exists (10 GB) but requires adding a payment method to enable R2 (UNVERIFIED for current policy), so we avoid it.
 
 ## 6. User auth (Claude to connector): options and recommendation
+**Update 2026-10-28 (v0.6):** replaced A with the HeavyJob connector's sign-in, same as ClearStory. Claude connects with OAuth (DCR); the Worker's own `/authorize` page takes an email on `ALLOWED_USER_EMAIL` plus one shared password (`ACCESS_PASSWORD_HASH`, PBKDF2, in Bitwarden). Access tokens 1 h, refresh 90 days. Every `/mcp` call and every refresh re-checks the allowlist and `TOKEN_EPOCH`. `MCP_PATH_SECRET` is gone. The text below is the original v1 analysis.
+
 VERIFIED from Claude docs (2026-10-15):
 - On Team plans, only **Owners and Primary Owners** can add custom connectors. Members then connect and enable it themselves.
 - The supported auth types are OAuth 2.0 with DCR or CIMD (default), `none` (authless, default), and `static_headers` (a fixed API key entered by the Owner; **beta, limited set of organizations**). `oauth_anthropic_creds` and `custom_connection` require contacting Anthropic.
@@ -98,7 +100,7 @@ VERIFIED from Claude docs (2026-10-15):
 
 ## 7. Hosting: Cloudflare Workers Free (decided)
 - One Worker, `schrex-hcss-mcp`, on `*.workers.dev`. `wrangler.toml` holds only non-secret vars and the KV binding.
-- Secrets are set **only** with `wrangler secret put`: `HCSS_CLIENT_ID`, `HCSS_CLIENT_SECRET`, `HCSS_BUSINESS_UNIT_ID`, `MCP_PATH_SECRET`.
+- Secrets are set **only** with `wrangler secret put`: `HCSS_CLIENT_ID`, `HCSS_CLIENT_SECRET`, `HCSS_BUSINESS_UNIT_ID`, `ALLOWED_USER_EMAIL`, `ACCESS_PASSWORD_HASH`, `TOKEN_EPOCH` (`MCP_PATH_SECRET` until v0.5).
 - Bundle: 835 KiB, 163 KiB gzipped (`wrangler deploy --dry-run`). The free limit is 3 MB compressed (UNVERIFIED that it's unchanged; we're far under it either way).
 - **Auth v2** (per-user OAuth): Cloudflare's `@cloudflare/workers-oauth-provider` library wraps this same handler and supports DCR, which Claude needs. Members would sign in with Microsoft 365 or Google as the upstream IdP. That needs a KV namespace for tokens: a few writes per login and refresh, which fits the free plan (UNVERIFIED at our scale).
 - Wrangler 4 needs **Node 22+** on the machine that deploys.
